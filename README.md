@@ -1,4 +1,4 @@
-# Stable-diffusion-webui-video
+# Stable diffusion webui video
 
 This script is created for use in the project https://github.com/AUTOMATIC1111/stable-diffusion-webui
 
