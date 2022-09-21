@@ -165,7 +165,7 @@ def make_video_ffmpeg(o, files=[], fps=30):
     open('outputs/video.txt', 'w').write(str)
 
     subprocess.call(
-        f'''ffmpeg/ffmpeg -r {fps} -f concat -safe 0 -i "outputs/video.txt" -vf "tblend=average,framestep=1,setpts=0.50*PTS" -vcodec libx264 -crf 10 -pix_fmt yuv420p {o} -y'''
+        f'''ffmpeg/ffmpeg -r {fps} -f concat -safe 0 -i "outputs/video.txt" -vcodec libx264 -crf 10 -pix_fmt yuv420p {o} -y'''
     )
     subprocess.run(
         f'''ffmpeg/ffplay {o}'''
