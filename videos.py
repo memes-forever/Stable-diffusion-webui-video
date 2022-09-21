@@ -94,7 +94,7 @@ class Script(scripts.Script):
         files = files[-loops:]
 
         make_video_ffmpeg(o='outputs/video.mp4', files=files, fps=fps)
-        processed.info = processed.info + '\nvideo save in F:\\ai\\stable-diffusion-webui\\outputs\\video.mp4'
+        processed.info = processed.info + '\nvideo save in stable-diffusion-webui\\outputs\\video.mp4'
 
         return processed
 
