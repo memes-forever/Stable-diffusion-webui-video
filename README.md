@@ -4,6 +4,9 @@ This script is created for use in the project https://github.com/AUTOMATIC1111/s
 
 using img2img generates pictures one after another
 
+# Example
+https://user-images.githubusercontent.com/107195976/191533981-3fa8b641-d120-49a0-ad90-ae980f9f4b94.mp4
+
 # Install
 copy video.py in stable-diffusion-webui/scripts folder
 
@@ -17,6 +20,5 @@ copy video.py in stable-diffusion-webui/scripts folder
 ![image](https://user-images.githubusercontent.com/107195976/191533315-b09e0e08-ec0c-4a86-a1fc-c451438a4e98.png)
 
 
-# Example
-https://user-images.githubusercontent.com/107195976/191533981-3fa8b641-d120-49a0-ad90-ae980f9f4b94.mp4
+
 
