@@ -5,6 +5,10 @@ This script is created for use in the project https://github.com/AUTOMATIC1111/s
 using img2img generates pictures one after another
 
 # Example
+
+
+https://user-images.githubusercontent.com/107195976/191579132-f6f1c2e8-ba3d-4caf-aac4-f48ff4928516.mp4
+
 https://user-images.githubusercontent.com/107195976/191533981-3fa8b641-d120-49a0-ad90-ae980f9f4b94.mp4
 
 # Install
