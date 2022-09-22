@@ -93,21 +93,27 @@ class Script(scripts.Script):
 
                 state.job = f"Iteration {i + 1}/{loops}, batch {n + 1}/{batch_count}"
 
-                processed = processing.process_images(p)
+                if i == 0:
+                    # First image
+                    init_img = p.init_images[0]
+                    seed = p.seed
+                    images.save_image(init_img, p.outpath_samples, "", seed, p.prompt)
+                else:
+                    processed = processing.process_images(p)
+                    init_img = processed.images[0]
+                    seed = processed.seed
 
-                if zoom and zoom_level != 1:
-                    processed.images[0] = self.zoom_into(processed.images[0], zoom_level, direction_x, direction_y)
+                    if initial_seed is None:
+                        initial_seed = processed.seed
+                        initial_info = processed.info
 
-                if initial_seed is None:
-                    initial_seed = processed.seed
-                    initial_info = processed.info
-
-                init_img = processed.images[0]
+                    if zoom and zoom_level != 1:
+                        init_img = self.zoom_into(init_img, zoom_level, direction_x, direction_y)
 
                 p.init_images = [init_img]
-                p.seed = processed.seed + 1
+                p.seed = seed + 1
                 p.denoising_strength = min(max(p.denoising_strength * denoising_strength_change_factor, 0.1), 1)
-                history.append(processed.images[0])
+                history.append(init_img)
 
             grid = images.image_grid(history, rows=1)
             if opts.grid_save:
@@ -125,14 +131,18 @@ class Script(scripts.Script):
         files = [i for i in glob.glob(f'{p.outpath_samples}/*.png')]
         files.sort(key=lambda f: os.path.getmtime(f))
         files = files[-loops:]
+        files = files + [files[-1]]  # minterpolate smooth break last frame, dupplicate this
 
-        make_video_ffmpeg(o='outputs/video.mp4', files=files, fps=fps)
-        processed.info = processed.info + '\nvideo save in stable-diffusion-webui\\outputs\\video.mp4'
+        video_name = files[-1].split('\\')[-1].split('.')[0] + '.mp4'
+
+        video_path = make_video_ffmpeg(video_name, files=files, fps=fps)
+        play_video_ffmpeg(video_path)
+        processed.info = processed.info + '\nvideo save in ' + video_path
 
         return processed
 
 
-def install_ffmpeg(path):
+def install_ffmpeg(path, save_dir):
     from basicsr.utils.download_util import load_file_from_url
     from zipfile import ZipFile
 
@@ -153,21 +163,38 @@ def install_ffmpeg(path):
 
         os.rmdir(os.path.join(ffmpeg_dir, listOfFileNames[0][:-1], 'bin'))
         os.rmdir(os.path.join(ffmpeg_dir, listOfFileNames[0][:-1]))
+    os.makedirs(save_dir, exist_ok=True)
     return
 
 
-def make_video_ffmpeg(o, files=[], fps=30):
+def make_video_ffmpeg(video_name, files=[], fps=30):
     import modules
     path = modules.paths.script_path
-    install_ffmpeg(path)
+    save_dir = 'outputs/img2img-video/'
+    install_ffmpeg(path, save_dir)
 
-    str = '\n'.join(["file '" + os.path.join(path, f) + "'" for f in files])
-    open('outputs/video.txt', 'w').write(str)
+    video_name = save_dir + video_name
+    txt_name = video_name + '.txt'
 
-    subprocess.call(
-        f'''ffmpeg/ffmpeg -r {fps} -f concat -safe 0 -i "outputs/video.txt" -vcodec libx264 -crf 10 -pix_fmt yuv420p {o} -y'''
+    # save pics path in txt
+    open(txt_name, 'w').write('\n'.join(["file '" + os.path.join(path, f) + "'" for f in files]))
+
+    # -vf "tblend=average,framestep=1,setpts=0.50*PTS"
+    subprocess.call(' '.join([
+        'ffmpeg/ffmpeg -y',
+        '-r 10',
+        '-f concat -safe 0',
+        '-i', f'"{txt_name}"',
+        '-vcodec libx264',
+        '-filter:v minterpolate',   # smooth between images
+        '-crf 10',
+        '-pix_fmt yuv420p',
+        f'"{video_name}"'
+    ]))
+    return video_name
+
+
+def play_video_ffmpeg(video_path):
+    subprocess.Popen(
+        f'''ffmpeg/ffplay "{video_path}"'''
     )
-    subprocess.run(
-        f'''ffmpeg/ffplay {o}'''
-    )
-    return o
