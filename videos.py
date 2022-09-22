@@ -24,7 +24,7 @@ class Script(scripts.Script):
 
         prompt_end = gr.Textbox(label='Prompt end', value="")
         seconds = gr.Slider(minimum=1, maximum=250, step=1, label='Seconds', value=1)
-        fps = gr.Slider(minimum=10, maximum=60, step=1, label='FPS', value=10)
+        fps = gr.Slider(minimum=1, maximum=60, step=1, label='FPS', value=10)
 
         denoising_strength_change_factor = gr.Slider(minimum=0.9, maximum=1.1, step=0.01,
                                                      label='Denoising strength change factor', value=1)
@@ -89,7 +89,7 @@ class Script(scripts.Script):
                     p.color_corrections = initial_color_corrections
 
                 if i > 0 and prompt_end not in p.prompt and prompt_end != '':
-                    p.prompt = prompt_end + ' ' + p.prompt
+                    p.prompt = prompt_end.strip() + ' ' + p.prompt.strip()
 
                 state.job = f"Iteration {i + 1}/{loops}, batch {n + 1}/{batch_count}"
 
