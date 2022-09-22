@@ -20,9 +20,9 @@ class Script(scripts.Script):
         return is_img2img
 
     def ui(self, is_img2img):
-        show = gr.Checkbox(label='Show generated pictures in ui', value=False)
-
         prompt_end = gr.Textbox(label='Prompt end', value="")
+
+        smooth = gr.Checkbox(label='Smooth video', value=True)
         seconds = gr.Slider(minimum=1, maximum=250, step=1, label='Seconds', value=1)
         fps = gr.Slider(minimum=1, maximum=60, step=1, label='FPS', value=10)
 
@@ -34,7 +34,9 @@ class Script(scripts.Script):
         direction_x = gr.Slider(minimum=-0.1, maximum=0.1, step=0.01, label='Direction X', value=0)
         direction_y = gr.Slider(minimum=-0.1, maximum=0.1, step=0.01, label='Direction Y', value=0)
 
-        return [show, prompt_end, seconds, fps, denoising_strength_change_factor, zoom, zoom_level, direction_x, direction_y]
+        show = gr.Checkbox(label='Show generated pictures in ui', value=False)
+        return [show, prompt_end, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+                direction_x, direction_y]
 
     def zoom_into(self, img, zoom, direction_x, direction_y):
         neg = lambda x: 1 if x > 0 else -1
@@ -52,7 +54,8 @@ class Script(scripts.Script):
         return img.resize((w, h), Image.LANCZOS)
 
     def run(self, p, show,
-            prompt_end, seconds, fps, denoising_strength_change_factor, zoom, zoom_level, direction_x, direction_y):  # , denoising_strength_change_factor
+            prompt_end, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+            direction_x, direction_y):  # , denoising_strength_change_factor
         processing.fix_seed(p)
 
         p.batch_size = 1
@@ -135,7 +138,7 @@ class Script(scripts.Script):
 
         video_name = files[-1].split('\\')[-1].split('.')[0] + '.mp4'
 
-        video_path = make_video_ffmpeg(video_name, files=files, fps=fps)
+        video_path = make_video_ffmpeg(video_name, files=files, fps=fps, smooth=smooth)
         play_video_ffmpeg(video_path)
         processed.info = processed.info + '\nvideo save in ' + video_path
 
@@ -167,7 +170,7 @@ def install_ffmpeg(path, save_dir):
     return
 
 
-def make_video_ffmpeg(video_name, files=[], fps=30):
+def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
     import modules
     path = modules.paths.script_path
     save_dir = 'outputs/img2img-video/'
@@ -182,11 +185,11 @@ def make_video_ffmpeg(video_name, files=[], fps=30):
     # -vf "tblend=average,framestep=1,setpts=0.50*PTS"
     subprocess.call(' '.join([
         'ffmpeg/ffmpeg -y',
-        '-r 10',
+        f'-r {fps}',
         '-f concat -safe 0',
-        '-i', f'"{txt_name}"',
+        f'-i "{txt_name}"',
         '-vcodec libx264',
-        '-filter:v minterpolate',   # smooth between images
+        '-filter:v minterpolate' if smooth else '',   # smooth between images
         '-crf 10',
         '-pix_fmt yuv420p',
         f'"{video_name}"'
