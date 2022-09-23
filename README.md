@@ -7,7 +7,9 @@ using img2img generates pictures one after another
 # Example
 
 
-https://user-images.githubusercontent.com/107195976/191821165-6dbb9421-696e-41f1-bcb8-6a4c206fbcc8.mp4
+
+https://user-images.githubusercontent.com/107195976/191963848-6eb8e169-dee3-46d7-8310-db45046353fd.mp4
+
 
 https://user-images.githubusercontent.com/107195976/191579132-f6f1c2e8-ba3d-4caf-aac4-f48ff4928516.mp4
 
