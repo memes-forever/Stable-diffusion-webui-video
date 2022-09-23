@@ -12,6 +12,10 @@ https://user-images.githubusercontent.com/107195976/191821165-6dbb9421-696e-41f1
 https://user-images.githubusercontent.com/107195976/191579132-f6f1c2e8-ba3d-4caf-aac4-f48ff4928516.mp4
 
 
+https://user-images.githubusercontent.com/107195976/191961159-c878aca6-267d-4f35-afb9-2b1908a620c8.mp4
+
+
+
 # Install
 copy video.py in stable-diffusion-webui/scripts folder
 
