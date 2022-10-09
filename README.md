@@ -1,4 +1,6 @@
 # Stable diffusion webui video
+I will totally write an update tomorrow!
+
 
 This script is created for use in the project https://github.com/AUTOMATIC1111/stable-diffusion-webui
 

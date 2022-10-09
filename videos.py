@@ -20,6 +20,8 @@ class Script(scripts.Script):
         return is_img2img
 
     def ui(self, is_img2img):
+        increase_seed = gr.Checkbox(label='Increase Seed', value=False)
+        prompt_end_trigger=gr.Slider(minimum=0.0, maximum=0.9, step=0.1, label='End Prompt Blend Trigger Percent', value=0)
         prompt_end = gr.Textbox(label='Prompt end', value="")
 
         smooth = gr.Checkbox(label='Smooth video', value=True)
@@ -33,10 +35,18 @@ class Script(scripts.Script):
         zoom_level = gr.Slider(minimum=1, maximum=1.1, step=0.001, label='Zoom level', value=1)
         direction_x = gr.Slider(minimum=-0.1, maximum=0.1, step=0.01, label='Direction X', value=0)
         direction_y = gr.Slider(minimum=-0.1, maximum=0.1, step=0.01, label='Direction Y', value=0)
-
+        rotate = gr.Checkbox(label='Rotate', value=False)
+        degree = gr.Slider(minimum=-3.6, maximum=3.6, step=0.1, label='Degrees', value=0)
+        is_tiled = gr.Checkbox(label="Is the Image Tiled?", value = False)
+        trnx =  gr.Checkbox(label='TranslateX', value=False)
+        trnx_left =  gr.Checkbox(label='Left', value=False)
+        trnx_percent = gr.Slider(minimum=0, maximum=50, step=1, label='PercentX', value=0)
+        trny =  gr.Checkbox(label='TranslateY', value=False)
+        trny_up =  gr.Checkbox(label='Up', value=False)
+        trny_percent = gr.Slider(minimum=0, maximum=50, step=1, label='PercentY', value=0)
         show = gr.Checkbox(label='Show generated pictures in ui', value=False)
-        return [show, prompt_end, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
-                direction_x, direction_y]
+        return [increase_seed, show, prompt_end,prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+                direction_x, direction_y, rotate, degree,is_tiled,trnx,trnx_left,trnx_percent,trny,trny_up,trny_percent]
 
     def zoom_into(self, img, zoom, direction_x, direction_y):
         neg = lambda x: 1 if x > 0 else -1
@@ -53,9 +63,59 @@ class Script(scripts.Script):
                         x + w / zoom2, y + h / zoom2))
         return img.resize((w, h), Image.LANCZOS)
 
-    def run(self, p, show,
-            prompt_end, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
-            direction_x, direction_y):  # , denoising_strength_change_factor
+    def rotate(self,img:Image, degrees: float):
+        img = img.rotate(degrees)
+        return img
+
+    def translateY(self,img:Image, percent : int, is_tiled: bool, up: bool = False):
+        w,h = img.size
+        scl = h*(percent/100.0)
+        h = int(scl)
+        na = np.array(img)
+        print(na.shape)
+        if up:
+            nextup = na[0:h,:,:]
+            nextup = nextup[np.random.permutation(nextup.shape[0]),:,:]
+            if is_tiled:
+                nextup = na[ -h:,:,:]
+            na = np.vstack((nextup,na))
+            na=na[:-h, :]
+        else:
+            nextdown = na[-h:, :,:]
+            nextdown = nextdown[np.random.permutation(nextdown.shape[0]),:, :]
+            if is_tiled:
+                nextdown = na[0:h, :,:]
+            na=np.vstack((na,nextdown))
+            na=na[h:,:] 
+        img = Image.fromarray(na)
+        return img
+
+    def translateX(self,img:Image, percent : int, is_tiled: bool,  left: bool = False,):
+        w,h = img.size
+        scl = w*(percent/100)
+        w = int(scl)
+        na = np.array(img)
+        if left:
+            nextleft = na[:,0:w:,:]
+            nextleft = nextleft[:,np.random.permutation(nextleft.shape[1]),:]
+            if is_tiled:
+                nextleft = na[:,-w:,:]
+            na=np.hstack((nextleft,na))
+            na=na[:,:-w]
+        else:
+            nextright = na[:,0:w,:]
+            nextright = nextright[:,np.random.permutation(nextright.shape[1]),:]
+            if is_tiled:
+                nextright = na[:,0:w,:]
+            na=np.hstack((na, nextright))
+            na=na[:,w:]       
+        img = Image.fromarray(na)
+        return img
+
+
+    def run(self, p, increase_seed, show,
+            prompt_end, prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+            direction_x, direction_y, rotate, degree,is_tiled, trnx,trnx_left, trnx_percent,trny,trny_up,trny_percent):  # , denoising_strength_change_factor
         processing.fix_seed(p)
 
         p.batch_size = 1
@@ -90,8 +150,9 @@ class Script(scripts.Script):
 
                 if opts.img2img_color_correction:
                     p.color_corrections = initial_color_corrections
-
-                if i > 0 and prompt_end not in p.prompt and prompt_end != '':
+                p.color_corrections = initial_color_corrections
+                
+                if i > int(loops*prompt_end_trigger) and prompt_end not in p.prompt and prompt_end != '':
                     p.prompt = prompt_end.strip() + ' ' + p.prompt.strip()
 
                 state.job = f"Iteration {i + 1}/{loops}, batch {n + 1}/{batch_count}"
@@ -103,6 +164,7 @@ class Script(scripts.Script):
                     images.save_image(init_img, p.outpath_samples, "", seed, p.prompt)
                 else:
                     processed = processing.process_images(p)
+                    print("Size of processed is now: ",len(processed.images))
                     init_img = processed.images[0]
                     seed = processed.seed
 
@@ -111,17 +173,26 @@ class Script(scripts.Script):
                         initial_info = processed.info
 
                     if zoom and zoom_level != 1:
+                        if rotate and degree != 0:
+                            init_img=self.rotate(init_img, degree)
                         init_img = self.zoom_into(init_img, zoom_level, direction_x, direction_y)
 
+                    if trnx and trnx_percent > 0:
+                        init_img = self.translateX(init_img, trnx_percent, is_tiled, trnx_left)
+                    
+                    if trny and trny_percent > 0:
+                        init_img = self.translateY(init_img, trny_percent, is_tiled, trny_up)
+
                 p.init_images = [init_img]
-                p.seed = seed + 1
+                if increase_seed:
+                    p.seed = seed + 1
                 p.denoising_strength = min(max(p.denoising_strength * denoising_strength_change_factor, 0.1), 1)
                 history.append(init_img)
 
             grid = images.image_grid(history, rows=1)
             if opts.grid_save:
                 images.save_image(grid, p.outpath_grids, "grid", initial_seed, p.prompt, opts.grid_format, info=info,
-                                  short_filename=not opts.grid_extended_filename, grid=True, p=p)
+                                 short_filename=not opts.grid_extended_filename, grid=True, p=p)
 
             grids.append(grid)
             all_images += history
@@ -173,18 +244,18 @@ def install_ffmpeg(path, save_dir):
 def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
     import modules
     path = modules.paths.script_path
-    save_dir = 'outputs/img2img-video/'
-    install_ffmpeg(path, save_dir)
+    save_dir = 'outputs/img2img-images/'
+    #install_ffmpeg(path, save_dir)
 
     video_name = save_dir + video_name
-    txt_name = video_name + '.txt'
+    txt_name = 'list.txt'
 
     # save pics path in txt
     open(txt_name, 'w').write('\n'.join(["file '" + os.path.join(path, f) + "'" for f in files]))
 
     # -vf "tblend=average,framestep=1,setpts=0.50*PTS"
     subprocess.call(' '.join([
-        'ffmpeg/ffmpeg -y',
+        'ffmpeg -y',
         f'-r {fps}',
         '-f concat -safe 0',
         f'-i "{txt_name}"',
@@ -199,5 +270,5 @@ def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
 
 def play_video_ffmpeg(video_path):
     subprocess.Popen(
-        f'''ffmpeg/ffplay "{video_path}"'''
+        f'''ffplay "{video_path}"'''
     )
