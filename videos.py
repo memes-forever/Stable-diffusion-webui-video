@@ -20,7 +20,7 @@ class Script(scripts.Script):
         return is_img2img
 
     def ui(self, is_img2img):
-        increase_seed = gr.Checkbox(label='Increase Seed', value=False)
+
         prompt_end_trigger=gr.Slider(minimum=0.0, maximum=0.9, step=0.1, label='End Prompt Blend Trigger Percent', value=0)
         prompt_end = gr.Textbox(label='Prompt end', value="")
 
@@ -45,7 +45,7 @@ class Script(scripts.Script):
         trny_up =  gr.Checkbox(label='Up', value=False)
         trny_percent = gr.Slider(minimum=0, maximum=50, step=1, label='PercentY', value=0)
         show = gr.Checkbox(label='Show generated pictures in ui', value=False)
-        return [increase_seed, show, prompt_end,prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+        return [ show, prompt_end,prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
                 direction_x, direction_y, rotate, degree,is_tiled,trnx,trnx_left,trnx_percent,trny,trny_up,trny_percent]
 
     def zoom_into(self, img, zoom, direction_x, direction_y):
@@ -67,6 +67,22 @@ class Script(scripts.Script):
         img = img.rotate(degrees)
         return img
 
+    def blend(self,signal,noisey):
+        noisey = noisey[np.random.permutation(noisey.shape[0]),:,:]
+        noisey= noisey[:,np.random.permutation(noisey.shape[1]),:]
+        #TODO figure out how to do this in numpy i guess we can save time here. this runs with 32 ms.
+        img_tmp = Image.fromarray(signal)
+        noise = Image.fromarray(noisey)
+        img_tmp.putalpha(1)
+        noise.putalpha(1)
+        blend = Image.blend(img_tmp, noise, 0.3)
+        blend.convert("RGB")
+        bg = Image.new("RGB", blend.size, (255, 255, 255) )
+        bg.paste(blend)
+        result = np.array(bg)
+        return result
+
+
     def translateY(self,img:Image, percent : int, is_tiled: bool, up: bool = False):
         w,h = img.size
         scl = h*(percent/100.0)
@@ -75,14 +91,16 @@ class Script(scripts.Script):
         print(na.shape)
         if up:
             nextup = na[0:h,:,:]
-            nextup = nextup[np.random.permutation(nextup.shape[0]),:,:]
+            nextdown = na[-h:, :,:]
+            nextup = self.blend(nextup,nextdown)
             if is_tiled:
                 nextup = na[ -h:,:,:]
             na = np.vstack((nextup,na))
             na=na[:-h, :]
         else:
             nextdown = na[-h:, :,:]
-            nextdown = nextdown[np.random.permutation(nextdown.shape[0]),:, :]
+            nextup = na[0:h,:,:]
+            nextdown = self.blend(nextdown,nextup)
             if is_tiled:
                 nextdown = na[0:h, :,:]
             na=np.vstack((na,nextdown))
@@ -90,21 +108,23 @@ class Script(scripts.Script):
         img = Image.fromarray(na)
         return img
 
-    def translateX(self,img:Image, percent : int, is_tiled: bool,  left: bool = False,):
+    def translateX(self,img:Image, percent : int, is_tiled: bool,  left: bool = False):
         w,h = img.size
         scl = w*(percent/100)
         w = int(scl)
         na = np.array(img)
         if left:
             nextleft = na[:,0:w:,:]
-            nextleft = nextleft[:,np.random.permutation(nextleft.shape[1]),:]
+            nextright = na[:,-w:,:]
+            nextleft = self.blend(nextleft,nextright)
             if is_tiled:
                 nextleft = na[:,-w:,:]
             na=np.hstack((nextleft,na))
             na=na[:,:-w]
         else:
-            nextright = na[:,0:w,:]
-            nextright = nextright[:,np.random.permutation(nextright.shape[1]),:]
+            nextright = na[:,-w:,:]
+            nextleft = na[:,0:w:,:]
+            nextright = self.blend(nextright,nextleft)
             if is_tiled:
                 nextright = na[:,0:w,:]
             na=np.hstack((na, nextright))
@@ -113,7 +133,7 @@ class Script(scripts.Script):
         return img
 
 
-    def run(self, p, increase_seed, show,
+    def run(self, p,  show,
             prompt_end, prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
             direction_x, direction_y, rotate, degree,is_tiled, trnx,trnx_left, trnx_percent,trny,trny_up,trny_percent):  # , denoising_strength_change_factor
         processing.fix_seed(p)
@@ -147,7 +167,7 @@ class Script(scripts.Script):
                 p.n_iter = 1
                 p.batch_size = 1
                 p.do_not_save_grid = True
-
+#TODO: Hook in here and use ffmpeg to directly make a movie. only safe certain keyframes to have some kind of preview.
                 if opts.img2img_color_correction:
                     p.color_corrections = initial_color_corrections
                 p.color_corrections = initial_color_corrections
@@ -164,7 +184,6 @@ class Script(scripts.Script):
                     images.save_image(init_img, p.outpath_samples, "", seed, p.prompt)
                 else:
                     processed = processing.process_images(p)
-                    print("Size of processed is now: ",len(processed.images))
                     init_img = processed.images[0]
                     seed = processed.seed
 
@@ -184,8 +203,8 @@ class Script(scripts.Script):
                         init_img = self.translateY(init_img, trny_percent, is_tiled, trny_up)
 
                 p.init_images = [init_img]
-                if increase_seed:
-                    p.seed = seed + 1
+
+                p.seed = seed + 1
                 p.denoising_strength = min(max(p.denoising_strength * denoising_strength_change_factor, 0.1), 1)
                 history.append(init_img)
 
@@ -240,12 +259,35 @@ def install_ffmpeg(path, save_dir):
     os.makedirs(save_dir, exist_ok=True)
     return
 
+#this typpe annotation syntax makes me happy.
+def ffmpeg_are_you_there(save_dir: string): 
+    result = False
+    #is ffmpeg in da path?
+    try:
+        subprocess.call(["wget", "your", "parameters", "here"])
+        result = True
+    except OSError as e:
+        if e.errno == errno.ENOENT and os.path.exists(os.path.abspath(os.path.join(ffmpeg_dir, 'ffmpeg.exe'))):
+            result = True #Well its installed locally so we are fine
+    return result
+            
+
 
 def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
     import modules
     path = modules.paths.script_path
-    save_dir = 'outputs/img2img-images/'
-    #install_ffmpeg(path, save_dir)
+    save_dir = 'outputs/img2img-videos/'
+    is_ffmpeg_already_in_path = ffmpeg_are_you_there(save_dir)
+    if not is_ffmpeg_already_in_path:
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+    else:
+        install_ffmpeg(path, save_dir)
+
+    ffmpgstrg = 'ffmpeg/ffmpeg'
+    if is_ffmpeg_already_in_path:
+            ffmpgstrg = 'ffmpeg'
+    
 
     video_name = save_dir + video_name
     txt_name = 'list.txt'
