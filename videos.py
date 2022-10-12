@@ -260,7 +260,8 @@ def install_ffmpeg(path, save_dir):
     return
 
 #this typpe annotation syntax makes me happy.
-def ffmpeg_are_you_there(save_dir: string): 
+def ffmpeg_are_you_there(path: string): 
+    ffmpeg_dir = os.path.join(path, 'ffmpeg')
     result = False
     #is ffmpeg in da path?
     try:
@@ -277,7 +278,7 @@ def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
     import modules
     path = modules.paths.script_path
     save_dir = 'outputs/img2img-videos/'
-    is_ffmpeg_already_in_path = ffmpeg_are_you_there(save_dir)
+    is_ffmpeg_already_in_path = ffmpeg_are_you_there(path)
     if not is_ffmpeg_already_in_path:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
