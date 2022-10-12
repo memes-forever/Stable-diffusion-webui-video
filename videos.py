@@ -262,14 +262,14 @@ def install_ffmpeg(path, save_dir):
 #this typpe annotation syntax makes me happy.
 def ffmpeg_are_you_there(path: string): 
     ffmpeg_dir = os.path.join(path, 'ffmpeg')
-    result = False
+    result = "no"
     #is ffmpeg in da path?
     try:
-        subprocess.call(["wget", "your", "parameters", "here"])
-        result = True
+        subprocess.call(["ffmpeg", "--version"])
+        result = "yes"
     except OSError as e:
         if e.errno == errno.ENOENT and os.path.exists(os.path.abspath(os.path.join(ffmpeg_dir, 'ffmpeg.exe'))):
-            result = True #Well its installed locally so we are fine
+            result = "installed"
     return result
             
 
@@ -279,16 +279,15 @@ def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
     path = modules.paths.script_path
     save_dir = 'outputs/img2img-videos/'
     is_ffmpeg_already_in_path = ffmpeg_are_you_there(path)
-    if not is_ffmpeg_already_in_path:
+    if  is_ffmpeg_already_in_path == "installed" or is_ffmpeg_already_in_path == "yes":
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
     else:
         install_ffmpeg(path, save_dir)
 
-    ffmpgstrg = 'ffmpeg/ffmpeg'
-    if is_ffmpeg_already_in_path:
-            ffmpgstrg = 'ffmpeg'
-    
+    ffmpegstr = 'ffmpeg/ffmpeg'
+    if is_ffmpeg_already_in_path == "yes":
+            ffmpegstr = 'ffmpeg'
 
     video_name = save_dir + video_name
     txt_name = 'list.txt'
@@ -298,7 +297,7 @@ def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
 
     # -vf "tblend=average,framestep=1,setpts=0.50*PTS"
     subprocess.call(' '.join([
-        'ffmpeg -y',
+        ffmmpegstr,' -y',
         f'-r {fps}',
         '-f concat -safe 0',
         f'-i "{txt_name}"',
@@ -312,6 +311,12 @@ def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
 
 
 def play_video_ffmpeg(video_path):
-    subprocess.Popen(
-        f'''ffplay "{video_path}"'''
-    )
+    ffplaystr="ffplay"
+    try:
+        subprocess.call(["ffplay", "--version"])
+        result = "yes"
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            ffplaystr = "ffmpeg/ffplay"
+
+    subprocess.Popen(f'''"{ffplaystr}" "{video_path}"''')
