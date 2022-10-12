@@ -320,3 +320,4 @@ def play_video_ffmpeg(video_path):
             ffplaystr = "ffmpeg/ffplay"
 
     subprocess.Popen(f'''"{ffplaystr}" "{video_path}"''')
+    
