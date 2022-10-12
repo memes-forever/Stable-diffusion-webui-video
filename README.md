@@ -2,7 +2,7 @@
 
 This script is created for use in the project https://github.com/AUTOMATIC1111/stable-diffusion-webui
 
-using img2img generates pictures one after another
+using img2img generates pictures one after another 
 
 # Example
 
