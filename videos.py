@@ -260,7 +260,7 @@ def install_ffmpeg(path, save_dir):
     return
 
 #this typpe annotation syntax makes me happy.
-def ffmpeg_are_you_there(path: string): 
+def ffmpeg_are_you_there(path): 
     ffmpeg_dir = os.path.join(path, 'ffmpeg')
     result = "no"
     #is ffmpeg in da path?
