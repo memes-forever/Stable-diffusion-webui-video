@@ -14,6 +14,20 @@ from modules.shared import opts, cmd_opts, state
 from PIL import Image
 
 
+####Cooldown HACK
+from time import time
+from time import sleep
+import wmi #Open Hardware Monitor
+#https://openhardwaremonitor.org/
+#makes total sense to overwrite the gpu fan power to 100% before starting to render.
+#im using https://www.msi.com/Landing/afterburner/graphics-cards for that
+
+#not sure if this should be ui configurable.
+TEMP_MAX = 88
+TEMP_MIN = 64
+#decreased rendering time for 30s from 2h:19m to 53m
+
+
 class Script(scripts.Script):
     def title(self):
         return "Img2Video"
@@ -136,6 +150,17 @@ class Script(scripts.Script):
         return img
 
 
+    ### Cooldown HACK
+    def measureGpuTemp(self):
+        pythoncom.CoInitialize()
+        w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+        sensors = w.Sensor()
+        gpu_temp = 0
+        for sensor in sensors:
+            if  sensor.SensorType==u'Temperature' and 'GPU' in sensor.Name:
+                gpu_temp = sensor.Value
+        return gpu_temp
+
     def run(self, p, outputname,  show,
             prompt_end, prompt_end_trigger, seconds, fps, previews, denoising_strength_change_factor, zoom, zoom_level,
             direction_x, direction_y, rotate, degree,is_tiled, trnx,trnx_left, trnx_percent,trny,trny_up,trny_percent):  # , denoising_strength_change_factor
@@ -165,6 +190,8 @@ class Script(scripts.Script):
         if outputname is None or outputname =="":
             outputname="output"
         output_file = outputname+".ts" #if something breaks no chance to recover mp4 file..
+        # Taken from https://github.com/Filarius
+        # Author: Filarius 
         encoder = ffmpeg(
             " ".join(
                 [
@@ -182,11 +209,31 @@ class Script(scripts.Script):
 
 
         initial_color_corrections = [processing.setup_color_correction(p.init_images[0])]
-
+####Cooling HACK
+        start = time()*10000 #seconds
         for n in range(batch_count):
             history = []
             loops = loops +1
             for ii in range(loops):
+
+
+           
+                ### Gpu Cooling HACK
+                #Check for cooldown
+                now = time()*10000 #seconds
+                if start-now >=30:  
+                    earlier = start 
+                    start = now
+                    gpu_temp = self.measureGpuTemp() #this operation takes 531ms  
+                    print("\n gpu is at: " , gpu_temp, " °C .")
+                    if gpu_temp == TEMP_MAX :  #GPU Clock goes down here RTX 2080TI
+                        while gpu_temp > TEMP_MIN: #ddunno. #letting fans run at 100% baseline is 35°
+                            gpu_temp = self.measureGpuTemp()
+                            sleep(10)
+                            print("Waiting... Temp is now: " ,gpu_temp, " °C \n")
+                        print("+++ Waited for: ", start-earlier, " seconds to CoolDown +++ \n")
+            #####
+
                 p.n_iter = 1
                 p.batch_size = 1
                 p.do_not_save_grid = True
@@ -276,8 +323,9 @@ def ffmpeg_are_you_there(save_dir :str):
             result = True #Well its installed locally so we are fine
     return result
             
-
-
+1
+# Taken from https://github.com/Filarius
+# Author: Filarius 
 class ffmpeg:
     def __init__(
         self,
