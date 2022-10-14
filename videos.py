@@ -2,9 +2,11 @@ import numpy as np
 from tqdm import trange
 import glob
 import os
+import sys
 import modules.scripts as scripts
 import gradio as gr
 import subprocess
+from subprocess import Popen, PIPE
 from modules import processing, shared, sd_samplers, images
 from modules.processing import Processed
 from modules.sd_samplers import samplers
@@ -14,16 +16,17 @@ from PIL import Image
 
 class Script(scripts.Script):
     def title(self):
-        return "Videos"
+        return "Img2Video"
 
     def show(self, is_img2img):
         return is_img2img
 
     def ui(self, is_img2img):
-
+        outputname = gr.Textbox(label="Output Name", lines=1)
         prompt_end_trigger=gr.Slider(minimum=0.0, maximum=0.9, step=0.1, label='End Prompt Blend Trigger Percent', value=0)
         prompt_end = gr.Textbox(label='Prompt end', value="")
 
+        previews = gr.Checkbox(label='Save Previews', value=True)
         smooth = gr.Checkbox(label='Smooth video', value=True)
         seconds = gr.Slider(minimum=1, maximum=250, step=1, label='Seconds', value=1)
         fps = gr.Slider(minimum=1, maximum=60, step=1, label='FPS', value=10)
@@ -45,7 +48,7 @@ class Script(scripts.Script):
         trny_up =  gr.Checkbox(label='Up', value=False)
         trny_percent = gr.Slider(minimum=0, maximum=50, step=1, label='PercentY', value=0)
         show = gr.Checkbox(label='Show generated pictures in ui', value=False)
-        return [ show, prompt_end,prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+        return [outputname, show, smooth, prompt_end,prompt_end_trigger, seconds, fps, previews, denoising_strength_change_factor, zoom, zoom_level,
                 direction_x, direction_y, rotate, degree,is_tiled,trnx,trnx_left,trnx_percent,trny,trny_up,trny_percent]
 
     def zoom_into(self, img, zoom, direction_x, direction_y):
@@ -133,11 +136,12 @@ class Script(scripts.Script):
         return img
 
 
-    def run(self, p,  show,
-            prompt_end, prompt_end_trigger, seconds, fps, smooth, denoising_strength_change_factor, zoom, zoom_level,
+    def run(self, p, outputname,  show,
+            prompt_end, prompt_end_trigger, seconds, fps, previews, denoising_strength_change_factor, zoom, zoom_level,
             direction_x, direction_y, rotate, degree,is_tiled, trnx,trnx_left, trnx_percent,trny,trny_up,trny_percent):  # , denoising_strength_change_factor
         processing.fix_seed(p)
 
+        import modules
         p.batch_size = 1
         p.n_iter = 1
 
@@ -149,44 +153,64 @@ class Script(scripts.Script):
         output_images, info = None, None
         initial_seed = None
         initial_info = None
-
+        if fps is None or fps < 10:
+            fps=10
         loops = seconds * fps
 
         grids = []
         all_images = []
         state.job_count = loops * batch_count
 
-        # fifty = int(loops/2)
+        save_dir = 'outputs/img2img-video/'
+        if outputname is None or outputname =="":
+            outputname="output"
+        output_file = outputname+".ts" #if something breaks no chance to recover mp4 file..
+        encoder = ffmpeg(
+            " ".join(
+                [
+                    "ffmpeg -y -loglevel panic",
+                    "-f rawvideo -pix_fmt rgb24",
+                    f"-s:v {p.width}x{p.height} -r {fps}",
+                    "-i - -c:v libx264 -pix_fmt yuv420p -preset fast",
+                    '-filter:v minterpolate' if smooth else '',
+                    f'-crf 10 "{save_dir}/{output_file}"',
+                ]
+            ),
+            use_stdin=True,
+        )
+        encoder.start()
+
 
         initial_color_corrections = [processing.setup_color_correction(p.init_images[0])]
 
         for n in range(batch_count):
             history = []
-
-            for i in range(loops):
+            loops = loops +1
+            for ii in range(loops):
                 p.n_iter = 1
                 p.batch_size = 1
                 p.do_not_save_grid = True
-#TODO: Hook in here and use ffmpeg to directly make a movie. only safe certain keyframes to have some kind of preview.
-                if opts.img2img_color_correction:
-                    p.color_corrections = initial_color_corrections
+                p.do_not_save_samples = True
+                if ii % fps == 0 and preview: # 1 sample per second if preview enabled
+                    p.do_not_save_samples = False
                 p.color_corrections = initial_color_corrections
                 
-                if i > int(loops*prompt_end_trigger) and prompt_end not in p.prompt and prompt_end != '':
+                if ii > int(loops*prompt_end_trigger) and prompt_end not in p.prompt and prompt_end != '':
                     p.prompt = prompt_end.strip() + ' ' + p.prompt.strip()
 
-                state.job = f"Iteration {i + 1}/{loops}, batch {n + 1}/{batch_count}"
+                state.job = f"Iteration {ii + 1}/{loops}, batch {n + 1}/{batch_count}"
 
-                if i == 0:
+                if ii == 0:
                     # First image
                     init_img = p.init_images[0]
                     seed = p.seed
                     images.save_image(init_img, p.outpath_samples, "", seed, p.prompt)
                 else:
                     processed = processing.process_images(p)
+
                     init_img = processed.images[0]
                     seed = processed.seed
-
+                    encoder.write(np.asarray(init_img))
                     if initial_seed is None:
                         initial_seed = processed.seed
                         initial_info = processed.info
@@ -206,31 +230,9 @@ class Script(scripts.Script):
 
                 p.seed = seed + 1
                 p.denoising_strength = min(max(p.denoising_strength * denoising_strength_change_factor, 0.1), 1)
-                history.append(init_img)
+                 
 
-            grid = images.image_grid(history, rows=1)
-            if opts.grid_save:
-                images.save_image(grid, p.outpath_grids, "grid", initial_seed, p.prompt, opts.grid_format, info=info,
-                                 short_filename=not opts.grid_extended_filename, grid=True, p=p)
-
-            grids.append(grid)
-            all_images += history
-
-        if opts.return_grid:
-            all_images = grids + all_images
-
-        processed = Processed(p, all_images if show else [], initial_seed, initial_info)
-
-        files = [i for i in glob.glob(f'{p.outpath_samples}/*.png')]
-        files.sort(key=lambda f: os.path.getmtime(f))
-        files = files[-loops:]
-        files = files + [files[-1]]  # minterpolate smooth break last frame, dupplicate this
-
-        video_name = files[-1].split('\\')[-1].split('.')[0] + '.mp4'
-
-        video_path = make_video_ffmpeg(video_name, files=files, fps=fps, smooth=smooth)
-        play_video_ffmpeg(video_path)
-        processed.info = processed.info + '\nvideo save in ' + video_path
+        processed = Processed(p,  [], initial_seed, initial_info)
 
         return processed
 
@@ -260,64 +262,78 @@ def install_ffmpeg(path, save_dir):
     return
 
 #this typpe annotation syntax makes me happy.
-def ffmpeg_are_you_there(path): 
+def ffmpeg_are_you_there(save_dir :str): 
+    import modules
+    path = modules.paths.script_path
+    result = False
     ffmpeg_dir = os.path.join(path, 'ffmpeg')
-    result = "no"
     #is ffmpeg in da path?
     try:
         subprocess.call(["ffmpeg", "--version"])
-        result = "yes"
+        result = True
     except OSError as e:
         if e.errno == errno.ENOENT and os.path.exists(os.path.abspath(os.path.join(ffmpeg_dir, 'ffmpeg.exe'))):
-            result = "installed"
+            result = True #Well its installed locally so we are fine
     return result
             
 
 
-def make_video_ffmpeg(video_name, files=[], fps=10, smooth=True):
-    import modules
-    path = modules.paths.script_path
-    save_dir = 'outputs/img2img-videos/'
-    is_ffmpeg_already_in_path = ffmpeg_are_you_there(path)
-    if  is_ffmpeg_already_in_path == "installed" or is_ffmpeg_already_in_path == "yes":
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-    else:
-        install_ffmpeg(path, save_dir)
+class ffmpeg:
+    def __init__(
+        self,
+        cmdln,
+        use_stdin=False,
+        use_stdout=False,
+        use_stderr=False,
+        print_to_console=True,
+    ):
+        self._process = None
+        self._cmdln = cmdln
+        self._stdin = None
 
-    ffmpegstr = 'ffmpeg/ffmpeg'
-    if is_ffmpeg_already_in_path == "yes":
-            ffmpegstr = 'ffmpeg'
+        if use_stdin:
+            self._stdin = PIPE
 
-    video_name = save_dir + video_name
-    txt_name = 'list.txt'
+        self._stdout = None
+        self._stderr = None
 
-    # save pics path in txt
-    open(txt_name, 'w').write('\n'.join(["file '" + os.path.join(path, f) + "'" for f in files]))
+        if print_to_console:
+            self._stderr = sys.stdout
+            self._stdout = sys.stdout
 
-    # -vf "tblend=average,framestep=1,setpts=0.50*PTS"
-    subprocess.call(' '.join([
-        ffmmpegstr,' -y',
-        f'-r {fps}',
-        '-f concat -safe 0',
-        f'-i "{txt_name}"',
-        '-vcodec libx264',
-        '-filter:v minterpolate' if smooth else '',   # smooth between images
-        '-crf 10',
-        '-pix_fmt yuv420p',
-        f'"{video_name}"'
-    ]))
-    return video_name
+        if use_stdout:
+            self._stdout = PIPE
 
+        if use_stderr:
+            self._stderr = PIPE
 
-def play_video_ffmpeg(video_path):
-    ffplaystr="ffplay"
-    try:
-        subprocess.call(["ffplay", "--version"])
-        result = "yes"
-    except OSError as e:
-        if e.errno == errno.ENOENT:
-            ffplaystr = "ffmpeg/ffplay"
+        self._process = None
 
-    subprocess.Popen(f'''"{ffplaystr}" "{video_path}"''')
-    
+    def start(self):
+        self._process = Popen(
+            self._cmdln, stdin=self._stdin, stdout=self._stdout, stderr=self._stderr
+        )
+
+    def readout(self, cnt=None):
+        if cnt is None:
+            buf = self._process.stdout.read()
+        else:
+            buf = self._process.stdout.read(cnt)
+        arr = np.frombuffer(buf, dtype=np.uint8)
+
+        return arr
+
+    def readerr(self, cnt):
+        buf = self._process.stderr.read(cnt)
+        return np.frombuffer(buf, dtype=np.uint8)
+
+    def write(self, arr):
+        bytes = arr.tobytes()
+        self._process.stdin.write(bytes)
+
+    def write_eof(self):
+        if self._stdin != None:
+            self._process.stdin.close()
+
+    def is_running(self):
+        return self._process.poll() is None

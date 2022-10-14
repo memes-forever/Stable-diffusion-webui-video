@@ -35,6 +35,7 @@ copy video.py in stable-diffusion-webui/scripts folder
 Extended Version:
 ![image](https://user-images.githubusercontent.com/12010863/195175113-12df7e14-4f96-4737-99c5-873b2278c796.png)
 
+
 1.) End Prompt Trigger
 Lets you define at how much Percent 0-100 the End Prompt will added to the original prompt
 
