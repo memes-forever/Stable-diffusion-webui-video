@@ -226,7 +226,7 @@ class Script(scripts.Script):
                     start = now
                     gpu_temp = self.measureGpuTemp() #this operation takes 531ms  
                     print("\n gpu is at: " , gpu_temp, " °C .")
-                    if gpu_temp == TEMP_MAX :  #GPU Clock goes down here RTX 2080TI
+                    if gpu_temp >= TEMP_MAX :  #GPU Clock goes down here RTX 2080TI
                         while gpu_temp > TEMP_MIN: #ddunno. #letting fans run at 100% baseline is 35°
                             gpu_temp = self.measureGpuTemp()
                             sleep(10)
